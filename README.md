@@ -2,7 +2,7 @@
 
 A practical starter for AI agents and humans collaborating on reproducible deep-learning experiments.
 
-统一的深度学习启动仓库：把开发、源码发布、任务定义和运行产物分开，让人和 Agent 都能找到
+一个统一的深度学习启动仓库模版：把开发、源码发布、任务定义和运行产物分开，让人和 Agent 都能*真正*找到
 代码、复现任务、追溯结果。提供工作流工具和真实的 PyTorch CPU 示例，可接入已有 trainer。
 
 ## 工作方式
