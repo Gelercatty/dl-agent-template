@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "seed": 7,
+  "max_steps": 40,
+  "inputs": {},
+  "expected_artifacts": ["ckpt/last.pt", "ckpt/last.pt.json", "metrics.json"],
+  "task": {
+    "samples": 128,
+    "hidden": 16,
+    "learning_rate": 0.03,
+    "checkpoint_every": 20
+  }
+}

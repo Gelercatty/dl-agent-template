@@ -1,0 +1,3 @@
+[release]
+include = ["workflow", "src", "configs", "plans", "docs", "tests", ".agents", ".github", "README.md", "AGENTS.md", "LICENSE", ".gitignore", "pyproject.toml", "uv.lock", "workflow.toml"]
+max_file_bytes = 2097152

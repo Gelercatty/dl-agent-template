@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "pipelines": {
+    "demo": {
+      "adapter": "dl_demo.pipeline",
+      "config": "configs/pipelines/demo.json"
+    },
+    "demo-long": {
+      "adapter": "dl_demo.pipeline",
+      "config": "configs/pipelines/demo-long.json"
+    }
+  }
+}
