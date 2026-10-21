@@ -31,6 +31,9 @@ def main() -> None:
     prepare.add_argument(
         "--bindings", type=Path, help="Private JSON mapping input names to local files"
     )
+    prepare.add_argument(
+        "--runtime", type=Path, help="Private YAML runtime placement and logger mode"
+    )
     prepare.add_argument("--resume", type=Path, help="Checkpoint with .json sidecar")
     for name in ("check", "execute", "status"):
         cmd = sub.add_parser(name)
@@ -52,6 +55,7 @@ def main() -> None:
                 args.plan,
                 args.bindings,
                 args.resume,
+                args.runtime,
             )
         )
     elif args.command == "check":

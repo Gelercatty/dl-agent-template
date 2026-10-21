@@ -3,10 +3,11 @@ name = "dl-agent-template"
 version = "0.1.0"
 description = "Reproducible deep-learning jobs with a practical agent collaboration workflow"
 requires-python = ">=3.11,<3.14"
-dependencies = []
+dependencies = ["PyYAML==6.0.1"]
 
 [project.optional-dependencies]
-demo = ["torch==2.8.0", "numpy==2.3.3"]
+demo = ["torch==2.8.0", "numpy==2.3.3", "pytorch-lightning==2.6.5", "torchmetrics==0.11.4", "setuptools==80.9.0"]
+tracking = ["swanlab==0.9.8", "lightning==2.6.5"]
 
 [dependency-groups]
 dev = ["pytest==8.4.2", "ruff==0.14.3"]

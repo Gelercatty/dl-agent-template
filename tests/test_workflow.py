@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from workflow.common import atomic_json, read_json
+from workflow.config import read_config
 from workflow.jobs import prepare_job, status, verify_job
 from workflow.release import create_release, verify_release
 
@@ -94,6 +95,7 @@ def test_freeze_captures_dirty_and_new_source_but_not_private_files(workspace):
     manifest = verify_release(release)
     assert manifest["git"]["dirty"] is True
     assert "src/new.py" in manifest["files"]
+    assert "src/dl_demo/data/classification.py" in manifest["files"]
     assert not (release / ".local").exists()
     assert create_release(code, runtime) == release
     (code / "src/new.py").write_text("ANSWER = 43\n")
@@ -128,7 +130,7 @@ def test_release_verification_rejects_changed_or_extra_source(workspace, change)
     code, runtime = workspace
     release = create_release(code, runtime)
     if change == "changed":
-        path = release / "src/dl_demo/pipeline.py"
+        path = release / "src/dl_demo/pipeline/adapters/classification.py"
         path.chmod(0o644)
         path.write_text("raise RuntimeError('tampered')\n")
     else:
@@ -152,7 +154,7 @@ def test_dry_run_does_not_create_run_or_change_job(workspace):
 
 def test_config_changes_and_unregistered_pipeline_are_rejected(workspace):
     job = job_for(workspace)
-    config = job / "config.json"
+    config = job / "config.yaml"
     config.chmod(0o644)
     config.write_text("{}")
     with pytest.raises(ValueError, match="Job file changed"):
@@ -167,13 +169,18 @@ def test_real_cpu_training_frozen_source_and_exact_resume(workspace):
     code, runtime = workspace
     release = create_release(code, runtime)
     first = prepare_job(release, runtime, "first", "demo", "plans/demo.md")
-    (code / "src/dl_demo/pipeline.py").write_text("raise RuntimeError('mutable code used')\n")
+    (code / "src/dl_demo/pipeline/adapters/classification.py").write_text(
+        "raise RuntimeError('mutable code used')\n"
+    )
     launch(first)
     evidence = status(first)
     assert evidence["status"] == "success"
     assert evidence["result"]["completed_steps"] == 40
     assert evidence["result"]["validation_accuracy"] >= 0.9
-    checkpoint = runtime / "Runs/first/ckpt/last.pt"
+    assert evidence["result"]["validation_steps"] == [0, 20, 40]
+    before = read_json(runtime / "Runs/first/view/step-000000.json")
+    assert before["optimizer_step"] == 0 and "val/accuracy" in before["metrics"]
+    checkpoint = runtime / "Runs/first/ckpt/last.ckpt"
     resumed = prepare_job(
         release, runtime, "resumed", "demo-long", "plans/resume-demo.md", resume=checkpoint
     )
@@ -181,14 +188,14 @@ def test_real_cpu_training_frozen_source_and_exact_resume(workspace):
     launch(resumed)
     launch(baseline)
     assert status(resumed)["result"]["resumed_from_step"] == 40
-    a = torch.load(runtime / "Runs/resumed/ckpt/last.pt", weights_only=True)
-    b = torch.load(runtime / "Runs/baseline/ckpt/last.pt", weights_only=True)
-    for name in a["model"]:
-        assert torch.equal(a["model"][name], b["model"][name])
-    assert torch.equal(a["rng"], b["rng"])
-    for key, value in a["optimizer"]["state"].items():
+    a = torch.load(runtime / "Runs/resumed/ckpt/last.ckpt", weights_only=True)
+    b = torch.load(runtime / "Runs/baseline/ckpt/last.ckpt", weights_only=True)
+    for name in a["state_dict"]:
+        assert torch.equal(a["state_dict"][name], b["state_dict"][name])
+    assert torch.equal(a["task_state"]["torch_rng"], b["task_state"]["torch_rng"])
+    for key, value in a["optimizer_states"][0]["state"].items():
         for name, tensor in value.items():
-            assert torch.equal(tensor, b["optimizer"]["state"][key][name])
+            assert torch.equal(tensor, b["optimizer_states"][0]["state"][key][name])
     assert not (runtime / "Runs/resumed/JOB_FAILED.json").exists()
     assert "Controller result" in (resumed / "TRAINING_RECORD.md").read_text()
     assert "Hypothesis" in (first / "PLAN.md").read_text()
@@ -266,9 +273,11 @@ def test_preflight_checks_bound_input_content(workspace, tmp_path):
 
     data = tmp_path / "data.txt"
     data.write_text("training input")
-    config = read_json(code / "configs/pipelines/demo.json")
+    config = read_config(code / "configs/pipelines/demo.yaml")
     config["inputs"] = {"train": {"id": "dataset-v1/train", "sha256": sha256(data)}}
-    atomic_json(code / "configs/pipelines/demo.json", config)
+    import yaml
+
+    (code / "configs/pipelines/demo.yaml").write_text(yaml.safe_dump(config))
     fake_pipeline(code, "pass")
     bindings = tmp_path / "bindings.json"
     atomic_json(bindings, {"train": str(data)})

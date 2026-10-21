@@ -2,12 +2,12 @@
   "schema": 1,
   "pipelines": {
     "demo": {
-      "adapter": "dl_demo.pipeline",
-      "config": "configs/pipelines/demo.json"
+      "adapter": "dl_demo.pipeline.adapters.classification",
+      "config": "configs/pipelines/demo.yaml"
     },
     "demo-long": {
-      "adapter": "dl_demo.pipeline",
-      "config": "configs/pipelines/demo-long.json"
+      "adapter": "dl_demo.pipeline.adapters.classification",
+      "config": "configs/pipelines/demo-long.yaml"
     }
   }
 }

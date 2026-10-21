@@ -41,7 +41,7 @@ project-workspace/
 ```text
 Jobs/<job-id>/
   JOB.json                来源、输入绑定、恢复来源和任务文件哈希
-  config.json             冻结注册配置的副本
+  config.yaml             原样冻结 YAML（旧 JSON Job 继续读取）
   PLAN.md                 冻结计划原文
   run.sh                  固定入口，运行时可指定 PYTHON_BIN
   TRAINING_RECORD.md      执行前计划、自动事实和人工／Agent 解释
@@ -75,7 +75,7 @@ Jobs/<job-id>/
 Runs/<job-id>/
   RUN.json                来源、启动时间和环境摘要
   train.log               Python 训练日志
-  ckpt/                   adapter checkpoint 和元数据
+  ckpt/                   adapter Lightning checkpoint 和元数据
   metrics.json            示例指标
   TRAIN_COMPLETE.json     通过输出合同后的步数与结果
   JOB_SUCCESS.json        验收终态与产物哈希
@@ -94,9 +94,25 @@ SIGINT／SIGTERM 记录中断，普通异常记录失败。SIGKILL、掉电或�
 
 恢复总是新 Job、新 Run，通过 `--resume` 引用已有 checkpoint，原运行不覆盖。
 checkpoint 必须配套 `.json` 元数据，校验内容、完成步数和 adapter 定义的兼容性。
-示例只允许改变 `max_steps`，恢复模型、optimizer 和 RNG，要求相同 torch 版本。
+示例允许改变 training.max_steps 和用于标识新实验的 experiment.name；恢复模型、optimizer、
+Lightning loop 和 RNG，要求相同 torch/Lightning 版本。
 故意更换模型或数据应定义迁移／初始化语义，不把它声称为精确恢复。
 
-示例每 20 步写独立 checkpoint，`ckpt/latest.json` 指向最新完整一代，最终写 `last.pt`。
-中断时用完整一代的 `.pt` 路径恢复。示例保留所有周期 checkpoint；生产 trainer 应在存储
-预算内配置保留策略。归档／清理只针对确认的 Run，不因上传成功自动删除原件。
+示例每 20 步写独立 checkpoint，`ckpt/latest.json` 指向最新完整一代，最终写 `last.ckpt`。
+中断时用完整一代的 `.ckpt` 路径恢复。示例按 YAML keep_checkpoints 保留最近完整周期 checkpoint，最终另存 last；只清理本 callback
+在本 Run 创建的周期文件。生产 trainer 需核定完整／分片／仅 adapter checkpoint 的存储预算。归档／清理只针对确认的 Run，不因上传成功自动删除原件。
+
+## 实验 YAML 与运行参数
+
+新实验使用 schema 2：`training.max_steps` 表示累计 optimizer 更新次数。
+完整 YAML 在 `configs/pipelines/`，禁止隐式覆盖、YAML alias 和重复键；学习率使用
+`1.0e-5` 这样的 YAML 数值写法。Job 哈希覆盖原始 YAML 字节，修改注释同样需要新 Job。
+历史 schema 1 JSON 和旧 Job 定义仍可校验；旧 Release 的执行代码保持原样。
+
+`--runtime .local/runtime.yaml` 将资源和日志运行模式固化到 JOB.json 的 execution 中，
+与实验 YAML 分离。未实现运行参数合同的 adapter 拒绝非空 execution。
+preflight 验证参数但不分配设备、实例化模型、初始化 tracker 或创建 Run。
+
+共享 Trainer 负责完整训练前验证、按 optimizer step 周期验证和训练后验证。
+本示例 resume 建立新 Job/Run，继承模型、optimizer、Lightning loop 和任务 RNG 状态；
+BOMB 的复用 Run ID / attempt 模式没有原样移入此模板，避免更改旧运行身份和追溯合同。

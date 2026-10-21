@@ -15,8 +15,8 @@ __pycache__/
 *.pth
 *.ckpt
 *.safetensors
-data/
-cache/
+/data/
+/cache/
 Releases/
 Jobs/
 Runs/

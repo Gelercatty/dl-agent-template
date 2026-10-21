@@ -1,0 +1,33 @@
+# Complete experiment: edit this file, freeze a new Release, then prepare a Job.
+schema: 2
+seed: 7
+inputs: {}
+expected_artifacts:
+  - ckpt/last.ckpt
+  - ckpt/last.ckpt.json
+  - metrics.json
+experiment:
+  name: demo
+  group: classification
+logging:
+  project: dl-agent-demo
+  tags: [synthetic, cpu]
+data:
+  samples: 128
+  batch_size: 128
+  num_workers: 0
+model:
+  hidden: 16
+optimizer:
+  learning_rate: 0.03
+training:
+  max_steps: 40                 # optimizer updates, including resumed updates
+  eval_every: 20                    # optimizer updates, independent of accumulation
+  eval_before_training: true        # full validation, not a two-batch sanity check
+  eval_at_end: true
+  checkpoint_every: 20
+  keep_checkpoints: 2
+trainer:
+  precision: 32-true
+  accumulate_grad_batches: 2
+  gradient_clip_val: 1.0

@@ -30,5 +30,20 @@ read [docs/records.md](docs/records.md). The repository skill is
   `uv run --locked ruff format --check .` and `uv run --locked --extra demo pytest -q`.
   Report missing dependencies as unverified, not as passing checks. When changing a trainer, add the
   smallest meaningful behavioral check for the changed contract.
-- Keep existing trainer/framework choices unless the task calls for replacing them. This template is
-  a workflow starter, not a reason to build a new scheduler or generic training framework.
+- Preserve the YAML → DataModule → pure nn.Module → LightningModule → registered adapter → shared
+  Trainer organization. Keep loss/optimizer/validation in LightningModule, dataset/sampling in data/,
+  tensor computation in model/, and assembly in pipeline/adapters/. Do not replace Lightning with a
+  handwritten training loop or move experiment semantics to JSON without an explicit user request.
+- Use complete configs/pipelines/*.yaml for experiments. Explain the field diff for each variant;
+  do not add runtime overlays or silently override hyperparameters. JSON is for machine manifests,
+  metrics and legacy job compatibility. Freeze the exact reviewed YAML text, including comments.
+- Keep placement, device count, strategy, Python paths and tracker mode in the private runtime/Job;
+  keep secrets and infrastructure outside source. Do not copy a reference project's platform defaults.
+- Humans decide the objective, meaningful variables and quality acceptance. Agents inspect evidence,
+  implement, check and prepare a concrete reviewable Job. Existing authorization carries forward;
+  only missing resource allocation/submission/publication authorization needs a question.
+- A completed full baseline precedes updates when configured; eval_every counts optimizer updates,
+  including gradient accumulation. A sanity check is not the baseline. Record fixed validation inputs,
+  seeds, failures and final evaluation; repeated validation is not an untouched test set.
+- Keep the workflow lightweight. Do not introduce a scheduler, database, configuration DSL, copied
+  experiment-specific trainer, or empty registration. Register only real adapters with output checks.

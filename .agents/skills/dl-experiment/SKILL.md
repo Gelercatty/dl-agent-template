@@ -12,7 +12,7 @@ directory. This skill is repository-local and refers to that repository's mainta
 Locate the designated development checkout and inspect its changes. Local or remote development is
 valid. Preserve unknown edits and identify which tree is the source before transferring code.
 
-For an experiment, turn the user's question into a complete registered config and a concrete plan.
+For an experiment, turn the user's question into a complete registered YAML config and a concrete plan.
 Use `python -m workflow release`, then `prepare`, then `check`; pass the generated Job path rather than
 launching from mutable source. Inspect the configuration, source identity, resource needs, resume
 source and output location. Use an appropriate smoke check for a new trainer.
@@ -22,7 +22,7 @@ already given for this task. If execution authorization is missing, prepare the 
 then ask only for the missing action; do not request the same authorization again.
 
 For trainer changes, read the [adapter contract](../../../docs/adapters.md), preserve the existing
-framework and implement real output validation. Do not claim distributed/GPU readiness from CPU
+YAML/data/model/lightning/pipeline boundaries and implement real output validation. Do not claim distributed/GPU readiness from CPU
 checks. Bind infrastructure outside tracked source.
 
 For recovery, inspect the exact Job and Run, terminal markers and complete checkpoint generations.
@@ -33,3 +33,8 @@ For result review, use `python -m workflow status --job ...`, read metrics and s
 compare with the original plan. Follow the [records contract](../../../docs/records.md): formal
 training requires pre/post records; ordinary investigation stays in chat unless recording is requested.
 Keep the original hypothesis, record deviations and separate execution success from task quality.
+
+When editing a pipeline, show its complete YAML and the meaningful field diff before a new formal
+run. Reuse the shared Trainer; new data/model/loss behavior belongs in the corresponding layer.
+Keep runtime placement separate. Check full baseline, optimizer-step evaluation, final artifacts
+and checkpoint recovery with an appropriate small behavioral test.

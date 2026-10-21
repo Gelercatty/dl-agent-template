@@ -29,13 +29,20 @@ from .common import (
     safe_relative,
     sha256,
 )
+from .config import max_steps, read_config
 from .release import verify_release
 
 
 def config_contract(config: dict) -> None:
-    require(config.get("schema") == 1, "Unsupported config schema")
     require(
-        type(config.get("max_steps")) is int and config["max_steps"] > 0,
+        type(config.get("schema")) is int and config["schema"] in {1, 2},
+        "Unsupported config schema",
+    )
+    if config["schema"] == 2:
+        require(isinstance(config.get("training"), dict), "training must be a mapping")
+        require("max_steps" in config["training"], "Missing training.max_steps")
+    require(
+        type(max_steps(config)) is int and max_steps(config) > 0,
         "max_steps must be a positive integer",
     )
     require(type(config.get("seed")) is int, "seed must be an integer")
@@ -74,7 +81,7 @@ def registration(release: Path, pipeline: str) -> tuple[dict, dict]:
         bool(re.fullmatch(r"[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*", entry["adapter"])),
         "Adapter must be a Python module name",
     )
-    config = read_json(regular_file(release, entry["config"]))
+    config = read_config(regular_file(release, entry["config"]))
     config_contract(config)
     return entry, config
 
@@ -87,6 +94,7 @@ def prepare_job(
     plan: str,
     bindings: Path | None = None,
     resume: Path | None = None,
+    runtime: Path | None = None,
 ) -> Path:
     release, workspace = release.resolve(), workspace.resolve()
     require(not workspace.is_relative_to(release), "Runtime workspace cannot be inside a release")
@@ -104,6 +112,7 @@ def prepare_job(
     input_paths = read_json(bindings) if bindings else {}
     require(set(input_paths) == set(config["inputs"]), "Input bindings do not match config inputs")
     input_paths = {k: str(Path(v).expanduser().resolve()) for k, v in input_paths.items()}
+    execution = read_config(runtime) if runtime else {}
     resume_spec = None
     if resume:
         resume = resume.resolve()
@@ -115,7 +124,14 @@ def prepare_job(
     destination.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".job-", dir=destination.parent))
     try:
-        atomic_json(staging / "config.json", config)
+        config_name = (
+            "config.yaml" if Path(entry["config"]).suffix in {".yaml", ".yml"} else "config.json"
+        )
+        # Preserve the exact reviewed text, including comments.
+        with (staging / config_name).open("wb") as stream:
+            stream.write(regular_file(release, entry["config"]).read_bytes())
+            stream.flush()
+            os.fsync(stream.fileno())
         atomic_text(staging / "PLAN.md", plan_text)
         script = (
             "#!/usr/bin/env bash\nset -euo pipefail\n"
@@ -138,8 +154,10 @@ def prepare_job(
             "adapter": entry["adapter"],
             "run": str(run),
             "bindings": input_paths,
+            "config_file": config_name,
+            "execution": execution,
             "resume": resume_spec,
-            "files": {p: sha256(staging / p) for p in ("config.json", "PLAN.md", "run.sh")},
+            "files": {p: sha256(staging / p) for p in (config_name, "PLAN.md", "run.sh")},
         }
         atomic_json(staging / "JOB.json", {**spec, "definition_sha256": digest(spec)})
         atomic_text(
@@ -148,7 +166,7 @@ def prepare_job(
             "## Execution evidence\n\nPrepared; not started.\n\n"
             "## Interpretation\n\nPending human/agent review against the plan.\n",
         )
-        for p in ("config.json", "PLAN.md", "JOB.json"):
+        for p in (config_name, "PLAN.md", "JOB.json"):
             (staging / p).chmod(0o444)
         staging.rename(destination)
         return destination
@@ -164,7 +182,9 @@ def verify_job(job: Path) -> tuple[dict, dict]:
         spec.get("schema") == 1 and digest(identity) == spec["definition_sha256"],
         "Job definition changed",
     )
-    require(set(spec["files"]) == {"config.json", "PLAN.md", "run.sh"}, "Job file contract changed")
+    config_name = spec.get("config_file", "config.json")
+    require(config_name in {"config.yaml", "config.json"}, "Invalid Job config file")
+    require(set(spec["files"]) == {config_name, "PLAN.md", "run.sh"}, "Job file contract changed")
     for name, expected in spec["files"].items():
         require(sha256(regular_file(job, name)) == expected, f"Job file changed: {name}")
     release = Path(spec["release"])
@@ -172,7 +192,7 @@ def verify_job(job: Path) -> tuple[dict, dict]:
     require(manifest["release_id"] == spec["release_id"], "Wrong release for job")
     entry, config = registration(release, spec["pipeline"])
     require(entry["adapter"] == spec["adapter"], "Job adapter differs from registered pipeline")
-    require(read_json(job / "config.json") == config, "Job config differs from frozen config")
+    require(read_config(job / config_name) == config, "Job config differs from frozen config")
     return spec, config
 
 
@@ -185,7 +205,7 @@ def check_job(job: Path) -> None:
     subprocess.run(
         frozen_command(job, dry_run=True),
         check=True,
-        env={**os.environ, "PYTHON_BIN": sys.executable},
+        env={**os.environ, "PYTHON_BIN": os.environ.get("PYTHON_BIN", sys.executable)},
     )
 
 
@@ -223,6 +243,10 @@ def preflight(job: Path) -> tuple[dict, dict, object, dict]:
         Path(adapter.__file__).resolve().is_relative_to(release), "Adapter loaded outside release"
     )
     adapter.validate(config)
+    if hasattr(adapter, "preflight_runtime"):
+        adapter.preflight_runtime(spec.get("execution", {}))
+    else:
+        require(not spec.get("execution"), "Adapter does not accept runtime options")
     runtime = adapter.preflight(config, spec["bindings"], resume_metadata)
     return spec, config, adapter, runtime
 
@@ -251,6 +275,7 @@ def execute(job: Path, dry_run: bool = False) -> None:
                     "release_id": spec["release_id"],
                     "run": spec["run"],
                     "runtime": runtime,
+                    "execution": spec.get("execution", {}),
                 },
                 indent=2,
             )
@@ -269,6 +294,7 @@ def execute(job: Path, dry_run: bool = False) -> None:
         "executable": sys.executable,
         "platform": platform.platform(),
         "runtime": runtime,
+        "execution": spec.get("execution", {}),
         "resume": spec["resume"],
     }
     previous_handlers = {}
@@ -293,7 +319,7 @@ def execute(job: Path, dry_run: bool = False) -> None:
                     result = adapter.validate_outputs(config, run)
                     require(
                         type(result.get("completed_steps")) is int
-                        and result["completed_steps"] == config["max_steps"],
+                        and result["completed_steps"] == max_steps(config),
                         "Training did not reach the planned step",
                     )
                     artifacts = {}
@@ -347,7 +373,7 @@ def status(job: Path) -> dict:
         require(evidence["definition_sha256"] == spec["definition_sha256"], "Wrong job evidence")
         require(evidence["status"] == "success", "Invalid success status")
         require(
-            evidence["result"]["completed_steps"] == config["max_steps"]
+            evidence["result"]["completed_steps"] == max_steps(config)
             and read_json(run / "TRAIN_COMPLETE.json") == evidence["result"],
             "Completion evidence mismatch",
         )
